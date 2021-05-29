@@ -16,7 +16,7 @@ PROGRAM galax21_beta; // NOMBRE PROGRAMA
 
 //CONST
 // VARIABLES GLOBALES
-GLOBAL  texts, enemyPoint, galaga, puntuacion, nivel, hyperspace,
+GLOBAL  texts,enemyPoint,galaga,puntuacion,life,nivel,hyperspace,
         IdLaserEnemy, mainScroll, fichero_efectos, main_s,
         idExplosionSnd, IdExplosion2Snd, IdHypervSnd, idLaserSnd;
 // VARIABLES PRIVADAS MAIN
@@ -30,6 +30,7 @@ BEGIN
     set_mode(m640x480);
     puntuacion=0; // set score to 0.
     nivel=1; // nivel 1
+    life=100; // vida de la nave. (da¤os)
     load_song("mod\obli.s3m",1); // carga musica fondo
     song(0);
 
@@ -37,13 +38,15 @@ BEGIN
     texts = load_fnt("steroid\steroid.fnt");
 
     // Escribe los textos de presentaci¢n
-    write(1,320,0,1,"GALAX21: DIV Test code");
+    write(0,320,5,2,"GALAX21: DIV Test code");
     write(1,0,480,6," LEVEL");
-    write(1,640,480,8,"MOVER RATON Y BTN IZQ DISPARO/FLECHA ARRIBA-TURBO");
+    write(0,640,480,8,"MOVER RATON Y BTN IZQ DISPARO/FLECHA ARRIBA-TURBO");
     write(1,530,0,1,"score:");
+    write(1,100,480,6,"- LIFE:");
+
     write_int(1,640,0,2,&puntuacion);
     write_int(1,64,480,6,&nivel);
-
+    write_int(1,164,480,6,&life);
     // SONIDOS
     idExplosionSnd=load_pcm("alien\explosio.pcm",0);
     idExplosion2Snd=load_pcm("alien\explosi8.pcm",0);
@@ -77,12 +80,10 @@ END
 
 // Todos los juegos en casi cualquier lenguage actual de medio o alto nivel
 // constan de un BUCLE o LOOP principal donde se pinta cada imagen (FRAME)
-// del juego. el numero de imagenes por segundo. los FPS son FRAMES por segundo.
-// existen casos MUY raros donde los juegos no se hacen con estos bucles.
-// POR ejemplo la ATARI 2600 es tan vieja y rara que no tenia estos bucles.
+// del juego. el numero de imagenes por segundo. los FPS son FRAMES segundo.
 
 PROCESS naveMainLoop()
-PRIVATE randN, enumber, i, Yi, cont, iters, posEnemyX, posEnemyY, idd3;
+PRIVATE randN, descuento=0, enumber, i, Yi, cont, iters, posEnemyX, posEnemyY, idd3;
 BEGIN
  LOOP
      file=main_s;
@@ -136,14 +137,10 @@ BEGIN
         // Crea los enemigos random de momento...
           enemyPoint += enemyPoint;
 
-          if(nivel>1)
-           iters = 2;
-          end
-          if(nivel>4)
-           iters = 3;
-          end;
+          iters = 0;
+
           if(nivel>7)
-           iters = 4;
+           iters = 1;
           end;
 
           // num enemigos cambia dependiendo nivel.
@@ -161,17 +158,28 @@ BEGIN
            posEnemyX = rand(50,480);
            posEnemyY = rand(y-400,y-650);
 
-           enemigo(enemyPoint, posEnemyX , posEnemyY,rand(enumber,enumber+1));
+           if(nivel!=3 && nivel!=6 && nivel!=9 && nivel!=12)
+            // enemigo normal
+            enemigo(enemyPoint, posEnemyX , posEnemyY,rand(enumber,enumber+1), "enemy");
+           else
+           // JEFE
+            enemigo(enemyPoint, posEnemyX,posEnemyY,1,"boss");
+           end;
 
             // colision de MI NAVE con disparo enemigo.
             idd3=collision(TYPE disparo_enemigo);
-            IF(idd3)
+            IF(idd3 && life==0) // si vida 0 explotamos.
                  stop_scroll(0);
                  explosion(mouse.x,mouse.y,idExplosionSnd);
                  END_GAME_SCORE("GAMEOVER");
                  signal(ID,s_kill);
                  destructor();
             END
+
+            IF(idd3 && life>0)
+              life-=10;
+              explosion(mouse.x,mouse.y-10,idExplosionSnd);
+            END;
 
           END
 
@@ -205,7 +213,7 @@ END
 PROCESS disparo_enemigo(x,y)
 BEGIN
   file=main_s;
-  graph=3;
+  graph=61;
   REPEAT
     y+=17; // se mueve hacia abajo 10 puntos
     FRAME;
@@ -233,8 +241,8 @@ PROCESS END_GAME_SCORE(event)
  IF (event=="GAMEOVER")
      delete_text(texts);
      write(1,320,240,1,"GAME OVER");
-     write(1,320,300,1,"SCORE:");
-     write_int(1,390,300,1,&puntuacion);
+     write(0,320,300,1,"SCORE:");
+     write_int(0,390,300,1,&puntuacion);
  END
  IF (event=="SUCCESS")
      delete_text(texts);
@@ -247,7 +255,7 @@ END
 
 
 // Pintamos cada enemigo segun tipo, posici¢n y gr fico.
-PROCESS enemigo(enemyP, x,y,gr);
+PROCESS enemigo(enemyP, x,y,gr,typ);
 PRIVATE
    velocidad; // velocidad enemigo
    idd=0;     // id de uso general
@@ -257,28 +265,51 @@ PRIVATE
    idd3=0; // id disparo enemigo
    x_point=0;
    y_point=0;
+   colision_times=0;
+   boss_energy=9;
 
 BEGIN
    file=galaga;
    x_point = x;
    y_point = y;
+
+
    REPEAT
 
     graph=gr;
 
-    angle=angulo2=rand(0,9*pi); // creamos un angulo al azar
-    incr_angulo=rand(-pi/32,pi/32); // idem con icremento del angulo.
-    velocidad = rand(2,10); // velocidad random enemigo para simplificar.
+    if(typ=="boss")
+     angle=90;
+     graph=gr+1;
+     incr_angulo=0;
+     velocidad = 0;
+    end
+
+    if(typ=="enemy")
+     angle=angulo2=rand(0,9*pi); // creamos un angulo al azar
+     incr_angulo=rand(-pi/32,pi/32); // idem con icremento del angulo.
+     velocidad = rand(2,10); // velocidad random enemigo para simplificar.
+    end;
 
     idd=collision(TYPE disparo_nave);
+
+    IF(idd && typ=="boss" && colision_times>=150)
+      puntuacion+=200;
+      signal(idd,s_kill);
+      explosion(idd.x, idd.y, idExplosionSnd);
+    else
+      colision_times+=1;
+    end;
+
     IF(idd)
-      puntuacion+=25;
+      puntuacion+=20;
       signal(idd,s_kill); // borramos el laser
       explosion(idd.x, idd.y, idExplosionSnd); // carga efecto explosion
       signal(ID,s_kill); // despues de explosion la nave desaparece.
     END
 
     idd2=collision(TYPE naveMainLoop);
+
     IF(idd2)
      stop_scroll(0);
      explosion(mouse.x, mouse.y, idExplosionSnd);
@@ -303,6 +334,7 @@ BEGIN
     IF(puntuacion > nivel * 2000 + (nivel * 1500 ) )
         nivel+= 1;
     END
+
     // cuando llegamos al 3 nivel, los enemigos disparan. mas dificultad.
     if(y>rand(0,100) && nivel>2 && rand(0,10000)>7700)
       disparo_enemigo(x,y); // crea el disparo del enemigo
@@ -315,6 +347,7 @@ BEGIN
    // es un error de principiantes NO PONERLO.
    // como la resolucion es 640x480 ponemos esos numeros.
    UNTIL (x>640+16 || y>480+16 || x<-16 || y<-16)
+
 END
 
 // funcion donde descargamos datos, unload, stops...
